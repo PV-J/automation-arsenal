@@ -1,0 +1,30 @@
+# ============================================================
+# Automation Arsenal — Unified Dependencies
+# ============================================================
+# Install: pip install -r requirements.txt
+#
+# Covers all four projects:
+#   finvoice/   — Invoice data extraction pipeline
+#   watchtower/ — Async health monitor & trend analyzer
+#   declutter/  — File deduplication & organization engine
+#   medrecon/   — Clinical data reconciliation
+
+# --- FinVoice: PDF parsing & data processing ---
+pdfplumber>=0.9.0,<1.0.0
+pandas>=2.0.0,<3.0.0
+openpyxl>=3.1.0,<4.0.0
+pytesseract>=0.3.10
+Pillow>=10.0.0,<11.0.0
+fpdf2>=2.7.0,<3.0.0
+
+# --- WatchTower: Async HTTP & monitoring ---
+aiohttp>=3.8.0,<4.0.0
+pyyaml>=6.0,<7.0.0
+requests>=2.31.0,<3.0.0
+
+# --- DeClutter: File analysis (Pillow already listed above) ---
+# Pillow is shared with FinVoice — no duplicate needed
+
+# --- MedRecon: Clinical data analysis ---
+numpy>=1.24.0,<2.0.0
+matplotlib>=3.7.0,<4.0.0
