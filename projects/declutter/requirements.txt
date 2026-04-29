@@ -1,0 +1,4 @@
+### `projects/declutter/requirements.txt`
+
+Pillow>=10.0.0
+pandas>=2.0.0
