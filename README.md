@@ -39,3 +39,7 @@ python -m projects.finvoice.invoice_pipeline --input sample_data/ --output resul
 python -m projects.watchtower.monitor --config projects/watchtower/config.yaml
 python -m projects.declutter.organizer ~/Downloads --dry-run
 python -m projects.medrecon.clinical_recon --ehr sample_data/ehr.csv --lab sample_data/lab.csv
+
+## 📸 See It In Action
+
+**FinVoice** — Extracting structured data from a messy PDF invoice:
