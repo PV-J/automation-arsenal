@@ -1,0 +1,12 @@
+### `projects/finvoice/requirements.txt`
+
+cd projects/finvoice/sample_data
+pip install fpdf2
+python generate_sample.py
+
+pdfplumber>=0.9.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+pytesseract>=0.3.10
+Pillow>=10.0.0
+fpdf2>=2.7.0,<3.0.0
