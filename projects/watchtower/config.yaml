@@ -1,0 +1,21 @@
+endpoints:
+  - url: https://api.example.com/health
+    method: GET
+    expected_status: 200
+    timeout_seconds: 10
+    check_ssl: true
+
+  - url: https://dashboard.example.com
+    method: GET
+    expected_status: 200
+    response_time_threshold_ms: 1500
+
+alerting:
+  slack_webhook: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+  discord_webhook: https://discord.com/api/webhooks/YOUR/WEBHOOK
+  alert_cooldown_minutes: 5
+
+trending:
+  db_path: monitor_history.db
+  degradation_threshold_percent: 50
+  minimum_data_points: 10
