@@ -44,16 +44,3 @@ projects/*/sample_data/actual_output/
 # Temporary
 tmp/
 temp/
-
-@"
-# Never commit these
-*.key
-*.pem
-.env
-*secret*
-*api-key*
-credentials*
-"@ | Out-File -FilePath .gitignore -Encoding ASCII -Append
-
-logs/
-results/
