@@ -1,0 +1,29 @@
+{
+  "total_files": 4,
+  "total_size": 9145829,
+  "categories": {
+    "documents": {
+      "count": 2,
+      "size": 141
+    },
+    "images": {
+      "count": 2,
+      "size": 9145688
+    }
+  },
+  "duplicates": {
+    "groups": 1,
+    "total_duplicate_files": 1,
+    "potential_savings_bytes": 4572844,
+    "potential_savings_human": "4.36 MB"
+  },
+  "duplicate_details": [
+    {
+      "original": "test\\20260122_164124.jpg",
+      "duplicates": [
+        "test\\scene.jpg"
+      ],
+      "size_per_file": 4572844
+    }
+  ]
+}

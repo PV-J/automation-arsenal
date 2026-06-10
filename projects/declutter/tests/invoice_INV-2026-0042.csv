@@ -1,0 +1,2 @@
+Invoice_Number,Vendor,Invoice_Date,Due_Date,Subtotal,Tax,Total
+INV-2026-0042,ACME CORPORATION,2026-04-29,2026-05-29,18900.0,1512.0,20412.0

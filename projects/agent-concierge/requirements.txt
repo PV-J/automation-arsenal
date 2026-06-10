@@ -1,0 +1,5 @@
+# Concierge requires no additional packages in Phase 1.
+# When connecting to real LLMs, add:
+# openai>=1.0.0
+# anthropic>=0.18.0
+# ollama>=0.1.0  (for local models)

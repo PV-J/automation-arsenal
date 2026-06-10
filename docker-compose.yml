@@ -1,0 +1,77 @@
+version: "3.8"
+
+services:
+  watchtower:
+    build:
+      context: ./projects/watchtower
+      dockerfile: Dockerfile
+    container_name: watchtower
+    volumes:
+      - ./projects/watchtower/config.yaml:/app/config.yaml
+      - watchtower_data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python monitor.py --config config.yaml
+    restart: unless-stopped
+
+  concierge:
+    build:
+      context: ./projects/agent-concierge
+      dockerfile: Dockerfile
+    container_name: concierge
+    volumes:
+      - ./projects/agent-concierge:/app
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - PYTHONUNBUFFERED=1
+    command: python concierge.py
+    stdin_open: true
+    tty: true
+    depends_on:
+      - watchtower
+
+  finvoice:
+    build:
+      context: ./projects/finvoice
+      dockerfile: Dockerfile
+    container_name: finvoice
+    volumes:
+      - ./projects/finvoice/sample_data:/app/sample_data
+      - finvoice_output:/app/results
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python invoice_pipeline.py --input sample_data/sample_invoice.pdf
+    profiles:
+      - tools
+
+  declutter:
+    build:
+      context: ./projects/declutter
+      dockerfile: Dockerfile
+    container_name: declutter
+    volumes:
+      - declutter_data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python organizer.py /app/data --dry-run
+    profiles:
+      - tools
+
+  medrecon:
+    build:
+      context: ./projects/medrecon
+      dockerfile: Dockerfile
+    container_name: medrecon
+    volumes:
+      - medrecon_data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python clinical_recon.py --demo
+    profiles:
+      - tools
+
+volumes:
+  watchtower_data:
+  finvoice_output:
+  declutter_data:
+  medrecon_data:

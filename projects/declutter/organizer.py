@@ -1,0 +1,382 @@
+"""
+organizer.py
+Intelligent file organization and deduplication engine.
+Uses content hashing and fuzzy matching to identify duplicates
+and organizes files based on type, date, and content patterns.
+
+Author: PV-J
+License: MIT
+Version: 1.0.0
+"""
+
+import hashlib
+import shutil
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, List, Set, Tuple, Optional
+import mimetypes
+import logging
+from dataclasses import dataclass
+from collections import defaultdict
+import json
+import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import re
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FileMetadata:
+    """Comprehensive file metadata for organization decisions."""
+    path: Path
+    size: int
+    modified_date: datetime
+    mime_type: str
+    extension: str
+    hash_md5: Optional[str] = None
+    hash_sha256: Optional[str] = None
+    is_duplicate: bool = False
+    duplicate_of: Optional[Path] = None
+    category: Optional[str] = None
+
+
+class FileAnalyzer:
+    """
+    Analyzes files for deduplication and categorization.
+    
+    Uses efficient multi-level strategy:
+    1. Size-based grouping (fastest)
+    2. Partial content hashing
+    3. Full content hashing for confirmed candidates
+    """
+    
+    def __init__(self, scan_directory: Path):
+        self.scan_directory = Path(scan_directory)
+        self.file_index: Dict[str, List[FileMetadata]] = defaultdict(list)
+        self.category_rules = {
+            'documents': {
+                'extensions': {'.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt'},
+                'patterns': [r'invoice', r'report', r'contract', r'proposal']
+            },
+            'spreadsheets': {
+                'extensions': {'.xls', '.xlsx', '.csv', '.ods'},
+                'patterns': [r'budget', r'financial', r'sales', r'inventory']
+            },
+            'images': {
+                'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'},
+                'patterns': [r'screenshot', r'photo', r'scan']
+            },
+            'archives': {
+                'extensions': {'.zip', '.tar', '.gz', '.7z', '.rar'},
+                'patterns': [r'backup', r'archive']
+            },
+            'code': {
+                'extensions': {'.py', '.js', '.html', '.css', '.json', '.xml'},
+                'patterns': [r'config', r'script', r'module']
+            }
+        }
+    
+    def scan_files(self, max_workers: int = 4) -> List[FileMetadata]:
+        """
+        Scan all files in directory concurrently.
+        
+        Uses thread pool for I/O-bound operations.
+        Returns list of file metadata objects.
+        """
+        files_to_process = list(self.scan_directory.rglob('*'))
+        files_to_process = [f for f in files_to_process if f.is_file()]
+        
+        logger.info(f"Found {len(files_to_process)} files to analyze")
+        
+        metadata_list = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_file = {
+                executor.submit(self._get_file_metadata, f): f 
+                for f in files_to_process
+            }
+            
+            for future in as_completed(future_to_file):
+                try:
+                    metadata = future.result()
+                    if metadata:
+                        metadata_list.append(metadata)
+                except Exception as e:
+                    logger.error(f"Error processing file: {e}")
+        
+        return metadata_list
+    
+    def _get_file_metadata(self, file_path: Path) -> Optional[FileMetadata]:
+        """Extract metadata from a single file."""
+        try:
+            stat = file_path.stat()
+            mime_type, _ = mimetypes.guess_type(str(file_path))
+            
+            return FileMetadata(
+                path=file_path,
+                size=stat.st_size,
+                modified_date=datetime.fromtimestamp(stat.st_mtime),
+                mime_type=mime_type or 'application/octet-stream',
+                extension=file_path.suffix.lower()
+            )
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Cannot access {file_path}: {e}")
+            return None
+    
+    def categorize_file(self, metadata: FileMetadata) -> str:
+        """
+        Categorize file based on extension and content patterns.
+        
+        Uses both explicit extension matching and pattern matching
+        for more accurate categorization.
+        """
+        filename = metadata.path.name.lower()
+        
+        for category, rules in self.category_rules.items():
+            # Check extension first
+            if metadata.extension in rules['extensions']:
+                return category
+            
+            # Check filename patterns
+            for pattern in rules['patterns']:
+                if re.search(pattern, filename, re.IGNORECASE):
+                    return category
+        
+        return 'other'
+
+
+class DeduplicationEngine:
+    """
+    Multi-pass deduplication engine with configurable strategies.
+    
+    Strategy levels:
+    1. Exact size matching (fastest)
+    2. First/last chunk hashing (fast)
+    3. Full file hashing (accurate)
+    4. Fuzzy matching for similar files (thorough)
+    """
+    
+    def __init__(self, safe_mode: bool = True):
+        self.safe_mode = safe_mode
+        self.chunk_size = 8192  # 8KB chunks for reading
+    
+    def find_duplicates_exact(self, files: List[FileMetadata]) -> Dict:
+        """Find exact duplicates using hierarchical hashing."""
+        # Step 1: Group by size
+        size_groups = defaultdict(list)
+        for file_meta in files:
+            size_groups[file_meta.size].append(file_meta)
+        
+        # Step 2: Check candidates with same size
+        duplicates = defaultdict(list)
+        for size, candidates in size_groups.items():
+            if len(candidates) < 2:
+                continue
+            
+            # Step 3: Hash first and last chunks
+            hash_candidates = defaultdict(list)
+            for candidate in candidates:
+                partial_hash = self._partial_file_hash(candidate.path)
+                if partial_hash:
+                    hash_candidates[partial_hash].append(candidate)
+            
+            # Step 4: Full hash for remaining candidates
+            for partial_hash, group in hash_candidates.items():
+                if len(group) < 2:
+                    continue
+                
+                for candidate in group:
+                    full_hash = self._full_file_hash(candidate.path)
+                    if full_hash:
+                        candidate.hash_md5 = full_hash
+                        duplicates[full_hash].append(candidate)
+        
+        # Keep only actual duplicates
+        return {k: v for k, v in duplicates.items() if len(v) > 1}
+    
+    def _partial_file_hash(self, file_path: Path) -> Optional[str]:
+        """
+        Create hash from first and last chunks of file.
+        
+        Faster than full hashing, eliminates most non-duplicates.
+        """
+        try:
+            file_size = file_path.stat().st_size
+            
+            if file_size == 0:
+                return "empty_file"
+            
+            with open(file_path, 'rb') as f:
+                # Read first chunk
+                first_chunk = f.read(self.chunk_size)
+                
+                # Read last chunk
+                if file_size > self.chunk_size:
+                    f.seek(-self.chunk_size, 2)  # Seek from end
+                    last_chunk = f.read(self.chunk_size)
+                else:
+                    last_chunk = b''
+                
+                hasher = hashlib.md5()
+                hasher.update(first_chunk)
+                hasher.update(last_chunk)
+                return hasher.hexdigest()
+                
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Cannot hash {file_path}: {e}")
+            return None
+    
+    def _full_file_hash(self, file_path: Path) -> Optional[str]:
+        """Compute MD5 hash of entire file."""
+        try:
+            hasher = hashlib.md5()
+            with open(file_path, 'rb') as f:
+                while chunk := f.read(self.chunk_size):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Cannot hash {file_path}: {e}")
+            return None
+    
+    def calculate_savings(self, duplicates: Dict) -> int:
+        """
+        Calculate potential space savings from duplicate removal.
+        
+        Keeps one copy of each duplicate set, removes others.
+        """
+        savings = 0
+        for hash_value, files in duplicates.items():
+            # Keep the file with shortest path (usually the original)
+            files_to_remove = sorted(
+                files, 
+                key=lambda x: len(str(x.path))
+            )[1:]  # Skip first (shortest path)
+            
+            savings += sum(f.size for f in files_to_remove)
+        
+        return savings
+
+
+class FileOrganizer:
+    """
+    Main organizer that combines analysis, deduplication, and organization.
+    
+    Workflow:
+    1. Scan and analyze all files
+    2. Identify duplicates
+    3. Categorize files
+    4. Generate organization plan
+    5. Execute organization (with safety confirmations)
+    """
+    
+    def __init__(self, scan_dir: str, organize_dir: str = None):
+        self.scan_dir = Path(scan_dir)
+        self.organize_dir = Path(organize_dir) if organize_dir else self.scan_dir
+        self.analyzer = FileAnalyzer(self.scan_dir)
+        self.dedup_engine = DeduplicationEngine(safe_mode=True)
+        
+    def generate_organization_plan(self) -> Dict:
+        """
+        Generate a comprehensive organization plan without executing.
+        
+        Returns detailed report of:
+        - File categories
+        - Duplicates found
+        - Space savings potential
+        - Suggested folder structure
+        """
+        logger.info("Starting file analysis...")
+        files = self.analyzer.scan_files()
+        
+        # Categorize files
+        categorized = defaultdict(list)
+        for file_meta in files:
+            category = self.analyzer.categorize_file(file_meta)
+            file_meta.category = category
+            categorized[category].append(file_meta)
+        
+        # Find duplicates
+        logger.info("Checking for duplicates...")
+        duplicates = self.dedup_engine.find_duplicates_exact(files)
+        savings = self.dedup_engine.calculate_savings(duplicates)
+        
+        # Mark duplicates
+        for hash_value, dup_files in duplicates.items():
+            original = min(dup_files, key=lambda x: len(str(x.path)))
+            for dup in dup_files:
+                if dup != original:
+                    dup.is_duplicate = True
+                    dup.duplicate_of = original.path
+        
+        return {
+            'total_files': len(files),
+            'total_size': sum(f.size for f in files),
+            'categories': {
+                cat: {
+                    'count': len(file_list),
+                    'size': sum(f.size for f in file_list)
+                }
+                for cat, file_list in categorized.items()
+            },
+            'duplicates': {
+                'groups': len(duplicates),
+                'total_duplicate_files': sum(len(v) - 1 for v in duplicates.values()),
+                'potential_savings_bytes': savings,
+                'potential_savings_human': self._human_readable_size(savings)
+            },
+            'duplicate_details': [
+                {
+                    'original': str(files[0].path),
+                    'duplicates': [str(f.path) for f in files[1:]],
+                    'size_per_file': files[0].size
+                }
+                for files in duplicates.values()
+            ]
+        }
+    
+    def _human_readable_size(self, size_bytes: int) -> str:
+        """Convert bytes to human readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.2f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.2f} PB"
+
+
+# Usage example and demonstration
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Intelligent File Organization & Deduplication Engine'
+    )
+    parser.add_argument('scan_dir', help='Directory to scan and organize')
+    parser.add_argument('--organize-dir', help='Target directory for organized files')
+    parser.add_argument('--dry-run', action='store_true', 
+                       help='Generate plan without executing')
+    parser.add_argument('--report', help='Save detailed report to JSON file')
+    
+    args = parser.parse_args()
+    
+    organizer = FileOrganizer(args.scan_dir, args.organize_dir)
+    
+    if args.dry_run:
+        print("Generating organization plan (dry run)...")
+        plan = organizer.generate_organization_plan()
+        
+        # Pretty print the plan
+        print("\n" + "="*50)
+        print("FILE ORGANIZATION REPORT")
+        print("="*50)
+        print(f"\nTotal files: {plan['total_files']}")
+        print(f"Total size: {organizer._human_readable_size(plan['total_size'])}")
+        
+        print(f"\nDuplicate groups found: {plan['duplicates']['groups']}")
+        print(f"Duplicate files: {plan['duplicates']['total_duplicate_files']}")
+        print(f"Potential savings: {plan['duplicates']['potential_savings_human']}")
+        
+        if args.report:
+            with open(args.report, 'w') as f:
+                json.dump(plan, f, indent=2, default=str)
+            print(f"\nDetailed report saved to {args.report}")

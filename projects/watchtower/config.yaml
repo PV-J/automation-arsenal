@@ -1,0 +1,27 @@
+endpoints:
+  - url: https://jsonplaceholder.typicode.com/posts/1
+    method: GET
+    expected_status: 200
+    timeout_seconds: 10
+    check_ssl: true
+
+  - url: https://jsonplaceholder.typicode.com/posts/1
+    method: GET
+    expected_status: 200
+    timeout_seconds: 10
+    response_time_threshold_ms: 500
+
+  - url: https://jsonplaceholder.typicode.com/posts/99999
+    method: GET
+    expected_status: 200
+    timeout_seconds: 10
+
+alerting:
+  slack_webhook: ""
+  discord_webhook: ""
+  alert_cooldown_minutes: 5
+
+trending:
+  db_path: monitor_history.db
+  degradation_threshold_percent: 50
+  minimum_data_points: 5
