@@ -47,3 +47,13 @@ temp/
 
 logs/
 results/
+
+@"
+# Never commit these
+*.key
+*.pem
+.env
+*secret*
+*api-key*
+credentials*
+"@ | Out-File -FilePath .gitignore -Encoding ASCII -Append
