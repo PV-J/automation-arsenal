@@ -44,3 +44,5 @@ projects/*/sample_data/actual_output/
 # Temporary
 tmp/
 temp/
+logs/
+results/
